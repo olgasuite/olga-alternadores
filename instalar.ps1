@@ -7,7 +7,10 @@
 #   instalar.ps1 -Itens AlternarAudio,TaxaTela     instala/atualiza so esses (os outros ficam como estao)
 #   instalar.ps1 -Todos                            instala/atualiza todos
 #   instalar.ps1 -Remover TelaScope                desinstala esses
-# Nomes: AlternarTela, AlternarAudio, EjetarDisco, EjetarMenu, TelaScope, TaxaTela
+# Nomes: AlternarTela, AlternarAudio, EjetarDisco, EjetarMenu, TelaScope, TaxaTela, MenuClassico
+#
+# MenuClassico (so Windows 11): clique direito do Explorador volta ao menu completo do Windows 10,
+# sem o "Mostrar mais opcoes". E so uma chave no registro (HKCU); reinicia o Explorador ao aplicar.
 #
 # TelaScope (2a tela scope 1920x804 <-> padrao 1920x1080 + correcao do DCP-o-matic Player)
 # so troca a resolucao se 1920x804 existir como resolucao personalizada no painel da placa
@@ -20,6 +23,9 @@ $origem = Split-Path -Parent $MyInvocation.MyCommand.Path
 $dest = 'C:\Scripts'
 $startup = [Environment]::GetFolderPath('Startup')
 $REGMENU = 'HKCU:\Software\Classes\Drive\shell\OLGA_EjetarDisco'
+$REGCLASSICO = 'HKCU:\Software\Classes\CLSID\{86ca1aa0-34aa-4e8b-a509-50c905bae2a2}'
+$WIN11 = [Environment]::OSVersion.Version.Build -ge 22000
+$reiniciarExplorer = $false
 
 # Nome = arquivo .ps1/.vbs (EjetarMenu usa os arquivos do EjetarDisco); Padrao = marcado na 1a instalacao
 $CATALOGO = @(
@@ -35,10 +41,13 @@ $CATALOGO = @(
         Desc = 'Clique escolhe a taxa; a troca so acontece ao parar de clicar.' }
     [pscustomobject]@{ Nome = 'TelaScope';     Padrao = $false; Titulo = 'Tela Scope 1920x804 / 1920x1080 (2a tela)';
         Desc = 'Precisa da resolucao 1920x804 criada no painel da placa de video.' }
+    [pscustomobject]@{ Nome = 'MenuClassico';  Padrao = $false; Titulo = 'Menu classico no clique direito (Windows 11)' + $(if ($WIN11) { '' } else { ' - sem efeito no Win10' });
+        Desc = 'Menu completo de sempre, sem "Mostrar mais opcoes". Reinicia o Explorador.' }
 )
 
 function Test-Instalado([string]$nome) {
     if ($nome -eq 'EjetarMenu') { return (Test-Path $REGMENU) }
+    if ($nome -eq 'MenuClassico') { return (Test-Path "$REGCLASSICO\InprocServer32") }
     return (Test-Path (Join-Path $startup "$nome.lnk"))
 }
 
@@ -55,6 +64,12 @@ function Copy-Arquivos([string]$nome) {
 }
 
 function Install-Item([string]$nome) {
+    if ($nome -eq 'MenuClassico') {
+        if (-not (Test-Path "$REGCLASSICO\InprocServer32")) { $script:reiniciarExplorer = $true }
+        New-Item -Path "$REGCLASSICO\InprocServer32" -Force | Out-Null
+        Set-ItemProperty "$REGCLASSICO\InprocServer32" -Name '(default)' -Value ''
+        return
+    }
     if ($nome -eq 'EjetarMenu') {
         Copy-Arquivos 'EjetarDisco'
         New-Item -Path "$REGMENU\command" -Force | Out-Null
@@ -74,6 +89,11 @@ function Install-Item([string]$nome) {
 }
 
 function Uninstall-Item([string]$nome) {
+    if ($nome -eq 'MenuClassico') {
+        Remove-Item $REGCLASSICO -Recurse -Force -ErrorAction SilentlyContinue
+        $script:reiniciarExplorer = $true
+        return
+    }
     if ($nome -eq 'EjetarMenu') {
         Remove-Item $REGMENU -Recurse -Force -ErrorAction SilentlyContinue
         if (-not (Test-Instalado 'EjetarDisco')) { Remove-Item "$dest\EjetarDisco.ps1", "$dest\EjetarDisco.vbs" -Force -ErrorAction SilentlyContinue }
@@ -147,6 +167,12 @@ foreach ($n in $remover) {
 }
 foreach ($n in $instalar) {
     try { Install-Item $n; $log += "Instalado: $n" } catch { $log += "ERRO ao instalar ${n}: $($_.Exception.Message)" }
+}
+if ($reiniciarExplorer -and $WIN11) {
+    Stop-Process -Name explorer -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Seconds 2
+    if (-not (Get-Process explorer -ErrorAction SilentlyContinue)) { Start-Process explorer.exe }
+    $log += 'Explorador reiniciado para aplicar o menu do clique direito.'
 }
 if (-not $log) { $log = @('Nada mudou.') }
 if ($instalar -contains 'TelaScope') { $log += ''; $log += 'TelaScope: precisa da resolucao personalizada 1920x804 no painel da placa de video.' }
