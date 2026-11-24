@@ -1,5 +1,8 @@
 # olga-alternadores
 
+<!-- aviso-ia -->
+> **Feito com IA.** O código deste repositório foi escrito pelo **Claude Code** (inteligência artificial da Anthropic), a partir das especificações, dos testes e da revisão do autor. Leia antes de usar, como faria com qualquer código.
+
 Icones de bandeja para Windows: alternar tela (duplicar/estender), saida de audio (com mudo), ejetar disco, taxa de atualizacao (Hz) tela scope (2a tela 1920x804/1920x1080 para o DCP-o-matic Player) e, no instalador, o menu classico no clique direito do Windows 11
 
 | Icone | O que faz |
