@@ -4,6 +4,9 @@
 # Se o Windows recusar, mostra qual programa esta usando o disco (evento 225 do Kernel-PnP)
 # e oferece fechar esse programa e tentar de novo.
 # Arquivo em ASCII puro (o PowerShell 5.1 le .ps1 sem BOM como ANSI).
+# Com -Letra X (menu de contexto do disco no Explorador): ejeta direto o disco dessa letra e sai.
+
+param([string]$Letra)
 
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 Add-Type @'
@@ -139,9 +142,11 @@ public static class Ejetor {
 }
 '@
 
-# uma instancia so
-$mutex = New-Object System.Threading.Mutex($false, 'Local\OLGA_EjetarDisco')
-if (-not $mutex.WaitOne(0)) { exit }
+# uma instancia so (o modo -Letra, do menu de contexto, roda solto e sai no fim)
+if (-not $Letra) {
+    $mutex = New-Object System.Threading.Mutex($false, 'Local\OLGA_EjetarDisco')
+    if (-not $mutex.WaitOne(0)) { exit }
+}
 
 $VETOS = @{ 1 = 'dispositivo antigo'; 2 = 'remocao pendente'; 3 = 'um programa'; 4 = 'um servico do Windows';
             5 = 'arquivo aberto'; 6 = 'outro dispositivo'; 7 = 'um driver'; 9 = 'energia'; 10 = 'disco do sistema (nao removivel)';
@@ -208,6 +213,7 @@ function Invoke-Ejetar($disco, [int]$tentativa = 1) {
     $tray.Text = 'Ejetar disco externo'
     if ($r.Ok) {
         $tray.ShowBalloonTip(4000, 'Pode desconectar', "$($disco.Rotulo)`n$($disco.Modelo)", 'Info')
+        $script:ejetou = $true
         return
     }
     $motivo = $VETOS[$r.Veto]; if (-not $motivo) { $motivo = "codigo $($r.Cr)/$($r.Veto)" }
@@ -245,7 +251,32 @@ $tray = New-Object System.Windows.Forms.NotifyIcon
 $tray.Icon = [System.Drawing.Icon]::FromHandle($h)
 $tray.Text = 'Ejetar disco externo'
 
-$menu = New-Object System.Windows.Forms.ContextMenuStrip
+# modo menu de contexto: ejeta o disco da letra pedida e sai
+if ($Letra) {
+    $L = $Letra.Trim().Substring(0, 1).ToUpper()
+    $disco = $null
+    try { $disco = @([Ejetor]::Listar()) | Where-Object { $_.Letras.Split(',') -contains $L } | Select-Object -First 1 } catch { }
+    if (-not $disco) {
+        [void][System.Windows.Forms.MessageBox]::Show("$($L): nao e um disco externo (USB/FireWire/SD) que possa ser ejetado.", 'Ejetar disco', 'OK', 'Information')
+    } else {
+        $script:ejetou = $false
+        $tray.Visible = $true
+        Invoke-Ejetar $disco
+        if ($script:ejetou) {
+            # deixa o aviso "Pode desconectar" aparecer antes de sair
+            $fim = New-Object System.Windows.Forms.Timer
+            $fim.Interval = 4500
+            $fim.add_Tick({ $fim.Stop(); [System.Windows.Forms.Application]::Exit() })
+            $fim.Start()
+            [System.Windows.Forms.Application]::Run()
+        }
+    }
+    $tray.Dispose()
+    [void][Ejetor]::DestroyIcon($script:hIcone)
+    exit
+}
+
+$menu =New-Object System.Windows.Forms.ContextMenuStrip
 # a lista e remontada toda vez que o menu abre
 $menu.add_Opening({
     $menu.Items.Clear()

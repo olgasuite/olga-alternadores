@@ -41,6 +41,17 @@ interface IMMDeviceCollection {
 interface IMMDeviceEnumerator {
     int EnumAudioEndpoints(int flow, int mask, out IMMDeviceCollection col);
     int GetDefaultAudioEndpoint(int flow, int role, out IMMDevice d);
+    int GetDevice([MarshalAs(UnmanagedType.LPWStr)] string id, out IMMDevice d);
+}
+
+[Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+interface IAudioEndpointVolume {
+    int RegisterControlChangeNotify(); int UnregisterControlChangeNotify(); int GetChannelCount();
+    int SetMasterVolumeLevel(); int SetMasterVolumeLevelScalar(); int GetMasterVolumeLevel();
+    int GetMasterVolumeLevelScalar(); int SetChannelVolumeLevel(); int SetChannelVolumeLevelScalar();
+    int GetChannelVolumeLevel(); int GetChannelVolumeLevelScalar();
+    int SetMute([MarshalAs(UnmanagedType.Bool)] bool mudo, ref Guid ctx);
+    int GetMute([MarshalAs(UnmanagedType.Bool)] out bool mudo);
 }
 
 [ComImport, Guid("BCDE0395-E52F-467C-8E3D-C4579291692E")]
@@ -99,6 +110,23 @@ public static class AltAudio {
         for (int role = 0; role < 3; role++) { int x = pc.SetDefaultEndpoint(id, role); if (x != 0) r = x; }
         return r;
     }
+
+    // mudo do Windows (o mesmo da tecla de mudo / icone de volume), por saida
+    static IAudioEndpointVolume Vol(string id) {
+        IMMDevice d;
+        if (id == null || En().GetDevice(id, out d) != 0 || d == null) return null;
+        Guid iid = typeof(IAudioEndpointVolume).GUID; object o;
+        if (d.Activate(ref iid, 23, IntPtr.Zero, out o) != 0) return null;
+        return (IAudioEndpointVolume)o;
+    }
+    public static bool Mudo(string id) {
+        var v = Vol(id); if (v == null) return false;
+        bool m; v.GetMute(out m); return m;
+    }
+    public static int DefinirMudo(string id, bool mudo) {
+        var v = Vol(id); if (v == null) return -1;
+        Guid g = Guid.Empty; return v.SetMute(mudo, ref g);
+    }
 }
 '@
 
@@ -107,9 +135,11 @@ $mutex = New-Object System.Threading.Mutex($false, 'Local\OLGA_AlternarAudio')
 if (-not $mutex.WaitOne(0)) { exit }
 
 $script:hIcone = [IntPtr]::Zero
+$script:hIconeMudo = [IntPtr]::Zero
 $script:idAtual = $null
+$script:mudoAtual = $null
 
-function New-Icone {
+function New-Icone([bool]$mudo = $false) {
     $bmp = New-Object System.Drawing.Bitmap 32, 32
     $g = [System.Drawing.Graphics]::FromImage($bmp)
     $g.SmoothingMode = 'AntiAlias'
@@ -122,9 +152,16 @@ function New-Icone {
         (New-Object System.Drawing.Point 17, 3), (New-Object System.Drawing.Point 17, 29),
         (New-Object System.Drawing.Point 9, 21), (New-Object System.Drawing.Point 2, 21))
     $g.FillPolygon($azul, $pts); $g.DrawPolygon($pen, $pts)
-    # ondas
-    $g.DrawArc($onda, 14, 9, 10, 14, -55, 110)
-    $g.DrawArc($onda, 14, 3, 17, 26, -55, 110)
+    if ($mudo) {
+        # X vermelho no lugar das ondas
+        $x = New-Object System.Drawing.Pen ([System.Drawing.Color]::FromArgb(232, 17, 35)), 4
+        $g.DrawLine($x, 19, 9, 30, 23); $g.DrawLine($x, 30, 9, 19, 23)
+        $x.Dispose()
+    } else {
+        # ondas
+        $g.DrawArc($onda, 14, 9, 10, 14, -55, 110)
+        $g.DrawArc($onda, 14, 3, 17, 26, -55, 110)
+    }
     $g.Dispose()
     $h = $bmp.GetHicon()
     $bmp.Dispose()
@@ -138,52 +175,88 @@ function Get-Nome($id) {
 
 function Update-Estado {
     try { $id = [AltAudio]::Atual() } catch { $id = $null }
-    if ($id -eq $script:idAtual) { return }
+    try { $mudo = [AltAudio]::Mudo($id) } catch { $mudo = $false }
+    if ($id -eq $script:idAtual -and $mudo -eq $script:mudoAtual) { return }
     $script:idAtual = $id
-    $t = 'Audio: ' + (Get-Nome $id)
+    $script:mudoAtual = $mudo
+    if ($mudo) { $tray.Icon = $script:icoMudo; $t = 'Audio: MUDO (' + (Get-Nome $id) + ')' }
+    else { $tray.Icon = $script:icoSom; $t = 'Audio: ' + (Get-Nome $id) }
     if ($t.Length -gt 63) { $t = $t.Substring(0, 63) }   # limite do tooltip da bandeja
     $tray.Text = $t
 }
 
+function Set-Mudo([bool]$mudo) {
+    $id = [AltAudio]::Atual()
+    $r = [AltAudio]::DefinirMudo($id, $mudo)
+    if ($r -ne 0) {
+        $tray.ShowBalloonTip(3000, 'Alternar audio', "Nao consegui mudar o mudo (codigo $r).", 'Warning')
+    } elseif ($mudo) {
+        $tray.ShowBalloonTip(1500, 'Audio', 'MUDO', 'Info')
+    } else {
+        $tray.ShowBalloonTip(1500, 'Saida de audio', (Get-Nome $id), 'Info')
+    }
+    $script:idAtual = $null
+    Update-Estado
+}
+
 function Set-Saida($s) {
+    # tirar do mudo a saida que estava muda, para o som nao sumir junto
+    $ant = [AltAudio]::Atual()
+    if ($ant -and $ant -ne $s.Id -and [AltAudio]::Mudo($ant)) { [void][AltAudio]::DefinirMudo($ant, $false) }
     $r = [AltAudio]::Definir($s.Id)
     if ($r -ne 0) {
         $tray.ShowBalloonTip(3000, 'Alternar audio', "O Windows recusou a mudanca (codigo $r).", 'Warning')
     } else {
+        # escolher uma saida = querer ouvir: tira do mudo
+        if ([AltAudio]::Mudo($s.Id)) { [void][AltAudio]::DefinirMudo($s.Id, $false) }
         $tray.ShowBalloonTip(1500, 'Saida de audio', $s.Nome, 'Info')
     }
     $script:idAtual = $null
     Update-Estado
 }
 
+# ciclo do clique: saida 1 -> saida 2 -> ... -> MUDO -> saida 1
 function Set-Proxima {
     $lista = @([AltAudio]::Listar())
-    if ($lista.Count -lt 2) {
-        $tray.ShowBalloonTip(2000, 'Alternar audio', 'So ha uma saida de audio disponivel.', 'Info')
+    if ($lista.Count -eq 0) {
+        $tray.ShowBalloonTip(2000, 'Alternar audio', 'Nenhuma saida de audio disponivel.', 'Info')
         return
     }
     $atual = [AltAudio]::Atual()
     $i = -1
     for ($k = 0; $k -lt $lista.Count; $k++) { if ($lista[$k].Id -eq $atual) { $i = $k } }
-    Set-Saida $lista[($i + 1) % $lista.Count]
+    if ([AltAudio]::Mudo($atual)) {
+        $prox = $lista[($i + 1) % $lista.Count]
+        if ($prox.Id -eq $atual) { Set-Mudo $false } else { Set-Saida $prox }
+    } elseif ($i -eq $lista.Count - 1) {
+        Set-Mudo $true
+    } else {
+        Set-Saida $lista[$i + 1]
+    }
 }
 
-$h = New-Icone
-$script:hIcone = $h
+$script:hIcone = New-Icone $false
+$script:hIconeMudo = New-Icone $true
+$script:icoSom = [System.Drawing.Icon]::FromHandle($script:hIcone)
+$script:icoMudo = [System.Drawing.Icon]::FromHandle($script:hIconeMudo)
 $tray = New-Object System.Windows.Forms.NotifyIcon
-$tray.Icon = [System.Drawing.Icon]::FromHandle($h)
+$tray.Icon = $script:icoSom
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 # a lista e remontada toda vez que o menu abre (fone/HDMI conectado depois aparece)
 $menu.add_Opening({
     $menu.Items.Clear()
     $atual = [AltAudio]::Atual()
+    $mudo = [AltAudio]::Mudo($atual)
     foreach ($s in [AltAudio]::Listar()) {
         $mi = $menu.Items.Add($s.Nome)
-        $mi.Checked = ($s.Id -eq $atual)
+        $mi.Checked = ($s.Id -eq $atual -and -not $mudo)
         $mi.Tag = $s
         $mi.add_Click({ param($o, $e) Set-Saida $o.Tag })
     }
+    $miMudo = $menu.Items.Add('Mudo')
+    $miMudo.Checked = $mudo
+    $miMudo.add_Click({ Set-Mudo (-not [AltAudio]::Mudo([AltAudio]::Atual())) })
     [void]$menu.Items.Add('-')
     $miCfg = $menu.Items.Add('Configuracoes de som do Windows...')
     $miCfg.add_Click({ Start-Process 'ms-settings:sound' })
@@ -212,4 +285,5 @@ $timer.Start()
 $timer.Stop()
 $tray.Dispose()
 if ($script:hIcone -ne [IntPtr]::Zero) { [void][AltAudio]::DestroyIcon($script:hIcone) }
+if ($script:hIconeMudo -ne [IntPtr]::Zero) { [void][AltAudio]::DestroyIcon($script:hIconeMudo) }
 $mutex.ReleaseMutex()
