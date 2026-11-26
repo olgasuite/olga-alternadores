@@ -192,8 +192,12 @@ function Install-BarraLimpa {
         if ($primeira) {
             New-ItemProperty "$REGBARRA\Anterior" -Name $chave -Value $(if ($null -eq $atual) { 'ausente' } else { "$atual" }) -PropertyType String -Force | Out-Null
         }
-        if ($atual -eq $b.V) { continue }
+        # Win10 atual: Noticias usa o valor protegido EnShellFeedsTaskbarViewMode e ignora o ShellFeeds...; so a politica resolve
+        $protegido = ($b.N -eq 'ShellFeedsTaskbarViewMode') -and ($null -ne (Get-ItemProperty $b.P -Name 'EnShellFeedsTaskbarViewMode' -ErrorAction SilentlyContinue))
+        if ($protegido -and (Get-ItemProperty 'HKLM:\SOFTWARE\Policies\Microsoft\Windows\Windows Feeds' -Name 'EnableFeeds' -ErrorAction SilentlyContinue).EnableFeeds -eq 0) { continue }
+        if ($atual -eq $b.V -and -not $protegido) { continue }
         try {
+            if ($protegido) { throw 'protegido' }
             if (-not (Test-Path $b.P)) { New-Item -Path $b.P -Force | Out-Null }
             New-ItemProperty $b.P -Name $b.N -Value $b.V -PropertyType DWord -Force -ErrorAction Stop | Out-Null
         } catch {
