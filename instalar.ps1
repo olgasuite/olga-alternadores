@@ -7,7 +7,10 @@
 #   instalar.ps1 -Itens AlternarAudio,TaxaTela     instala/atualiza so esses (os outros ficam como estao)
 #   instalar.ps1 -Todos                            instala/atualiza todos
 #   instalar.ps1 -Remover TelaScope                desinstala esses
-# Nomes: AlternarTela, AlternarAudio, EjetarDisco, EjetarMenu, Lixeira, TelaScope, TaxaTela, MenuClassico, DetalhesPastas, BarraLimpa
+# IconesDesktop: clique na bandeja esconde/mostra os icones da Area de Trabalho (a opcao "Mostrar icones
+# da area de trabalho" do Windows). Ao desinstalar, se estiverem escondidos, voltam.
+#
+# Nomes: AlternarTela, AlternarAudio, EjetarDisco, EjetarMenu, Lixeira, IconesDesktop, TelaScope, TaxaTela, MenuClassico, DetalhesPastas, BarraLimpa
 #
 # BarraLimpa: tira da barra de tarefas Pesquisar e Visao de Tarefas (Win10 e 11), Cortana, Noticias e
 # Interesses, Reunir Agora e Pessoas (Win10), Widgets, Chat e Copilot (Win11). Guarda os valores anteriores
@@ -62,7 +65,9 @@ $CATALOGO = @(
         Desc = 'Item "Ejetar disco (OLGA)" no menu do disco.' }
     [pscustomobject]@{ Nome = 'Lixeira';       Padrao = $true;  Titulo = 'Lixeira na bandeja (sai da Area de Trabalho)';
         Desc = 'Clique abre a Lixeira; menu esvazia. Some da Area de Trabalho (volta se desmarcar).' }
-    [pscustomobject]@{ Nome = 'TaxaTela';      Padrao = $true;  Titulo = 'Taxa de atualizacao (Hz)';
+    [pscustomobject]@{ Nome = 'IconesDesktop'; Padrao = $true; Titulo = 'Esconder / mostrar icones da Area de Trabalho';
+        Desc = 'Clique esconde ou mostra os icones (opcao do Windows; nada e ocultado nos arquivos).' }
+    [pscustomobject]@{ Nome = 'TaxaTela';     Padrao = $true;  Titulo = 'Taxa de atualizacao (Hz)';
         Desc = 'Clique escolhe a taxa; a troca so acontece ao parar de clicar.' }
     [pscustomobject]@{ Nome = 'TelaScope';     Padrao = $false; Titulo = 'Tela Scope 1920x804 / 1920x1080 (2a tela)';
         Desc = 'Precisa da resolucao 1920x804 criada no painel da placa de video.' }
@@ -102,6 +107,28 @@ function Set-LixeiraNaAreaDeTrabalho([bool]$mostrar) {
         Add-Type -Name OlgaInstNotify -Namespace '' -MemberDefinition '[DllImport("shell32.dll")] public static extern void SHChangeNotify(int e, uint f, IntPtr a, IntPtr b);'
     }
     [OlgaInstNotify]::SHChangeNotify(0x08000000, 0, [IntPtr]::Zero, [IntPtr]::Zero)
+}
+
+function Show-IconesDesktop {
+    # ao desinstalar o IconesDesktop, nao deixar os icones escondidos sem o botao para voltar
+    $hide = (Get-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'HideIcons' -ErrorAction SilentlyContinue).HideIcons
+    if ($hide -ne 1) { return }
+    if (-not ('OlgaInstDesk' -as [type])) {
+        Add-Type -Name OlgaInstDesk -Namespace '' -MemberDefinition @'
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindow(string c, string t);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowEx(IntPtr p, IntPtr a, string c, string t);
+[DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+'@
+    }
+    $d = [OlgaInstDesk]::FindWindowEx([OlgaInstDesk]::FindWindow('Progman', $null), [IntPtr]::Zero, 'SHELLDLL_DefView', $null)
+    $w = [IntPtr]::Zero
+    while ($d -eq [IntPtr]::Zero) {
+        $w = [OlgaInstDesk]::FindWindowEx([IntPtr]::Zero, $w, 'WorkerW', $null)
+        if ($w -eq [IntPtr]::Zero) { break }
+        $d = [OlgaInstDesk]::FindWindowEx($w, [IntPtr]::Zero, 'SHELLDLL_DefView', $null)
+    }
+    if ($d -ne [IntPtr]::Zero) { [void][OlgaInstDesk]::SendMessage($d, 0x0111, [IntPtr]0x7402, [IntPtr]::Zero) }
+    else { Set-ItemProperty 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced' -Name 'HideIcons' -Value 0 }
 }
 
 function Stop-Explorador {
@@ -279,6 +306,7 @@ function Uninstall-Item([string]$nome) {
     }
     Stop-Icone $nome
     if ($nome -eq 'Lixeira') { Set-LixeiraNaAreaDeTrabalho $true }
+    if ($nome -eq 'IconesDesktop') { Show-IconesDesktop }
     Remove-Item (Join-Path $startup "$nome.lnk") -Force -ErrorAction SilentlyContinue
     # o EjetarDisco continua sendo usado pelo item do clique direito
     if (-not ($nome -eq 'EjetarDisco' -and (Test-Path $REGMENU))) {

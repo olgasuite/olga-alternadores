@@ -3,7 +3,7 @@
 <!-- aviso-ia -->
 > **Feito com IA.** O código deste repositório foi escrito pelo **Claude Code** (inteligência artificial da Anthropic), a partir das especificações, dos testes e da revisão do autor. Leia antes de usar, como faria com qualquer código.
 
-Icones de bandeja para Windows: alternar tela (duplicar/estender), saida de audio (com mudo), ejetar disco, taxa de atualizacao (Hz), tela scope (2a tela 1920x804/1920x1080 para o DCP-o-matic Player) e Lixeira; e, no instalador, ajustes sem icone: menu classico no clique direito do Windows 11, todas as pastas em Detalhes e barra de tarefas sem distracoes.
+Icones de bandeja para Windows: alternar tela (duplicar/estender), saida de audio (com mudo), ejetar disco, taxa de atualizacao (Hz), tela scope (2a tela 1920x804/1920x1080 para o DCP-o-matic Player), Lixeira e esconder/mostrar os icones da Area de Trabalho; e, no instalador, ajustes sem icone: menu classico no clique direito do Windows 11, todas as pastas em Detalhes e barra de tarefas sem distracoes.
 
 | Icone | O que faz |
 |---|---|
@@ -14,6 +14,7 @@ Icones de bandeja para Windows: alternar tela (duplicar/estender), saida de audi
 | TelaScope | Clique alterna a 2a tela entre scope (1920x804) e padrao (1920x1080). Tambem corrige o DCP-o-matic Player 2.18 em modo duas telas, que abre a janela de imagem com 1920x1080 numa tela scope e faz o flat vazar para a tela principal. |
 | MenuClassico | Nao e icone: opcao do instalador que deixa o clique direito do Explorador no Windows 11 igual ao menu classico (completo, sem "Mostrar mais opcoes"). Grava uma chave em HKCU e reinicia o Explorador; desmarcar volta ao menu do Windows 11. Sem efeito no Windows 10. |
 | Lixeira | Icone da Lixeira na bandeja (vazia/cheia, com numero de itens e tamanho). Clique abre; botao direito esvazia. Ao instalar, a Lixeira sai da Area de Trabalho (volta ao desinstalar). |
+| IconesDesktop | Clique esconde ou mostra os icones da Area de Trabalho, na hora e sem reiniciar o Explorador. E a opcao do Windows "Exibir > Mostrar icones da area de trabalho": nenhum arquivo e ocultado. O icone muda (azul = visiveis, cinza com risco = escondidos) e acompanha a troca feita pelo menu do Windows. Ao desinstalar, os icones voltam se estiverem escondidos. |
 | DetalhesPastas | Nao e icone: todas as pastas abrem em Detalhes com as mesmas colunas e larguras (Nome, Tipo, datas, Tamanho, Duracao, Altura, Largura, taxas de bits e de quadros). Faz backup .reg das vistas antigas e reinicia o Explorador; desmarcar devolve os padroes anteriores. |
 | BarraLimpa | Nao e icone: tira distracoes da barra de tarefas. Windows 10 e 11: Pesquisar e Visao de Tarefas. Windows 10: Cortana, Noticias e Interesses, Reunir Agora, Pessoas. Windows 11: Widgets, Chat e Copilot. Guarda os valores anteriores; desmarcar devolve. Se o Windows bloquear o botao de Widgets/Noticias, aplica pela politica da maquina (pede administrador). |
 
@@ -21,6 +22,6 @@ Icones de bandeja para Windows: alternar tela (duplicar/estender), saida de audi
 
 **Instalar:** botao direito em `instalar.ps1` > Executar com o PowerShell. Abre uma janela para escolher quais icones instalar (o que ja esta instalado vem marcado; desmarcar desinstala). Copia para `C:\Scripts`, cria atalhos na Inicializacao do Windows e abre os icones.
 
-Sem janela: `instalar.ps1 -Itens AlternarAudio,TaxaTela` (instala/atualiza so esses), `-Todos`, `-Remover TelaScope`. Nomes: AlternarTela, AlternarAudio, EjetarDisco, EjetarMenu, Lixeira, TaxaTela, TelaScope, MenuClassico, DetalhesPastas, BarraLimpa.
+Sem janela: `instalar.ps1 -Itens AlternarAudio,TaxaTela` (instala/atualiza so esses), `-Todos`, `-Remover TelaScope`. Nomes: AlternarTela, AlternarAudio, EjetarDisco, EjetarMenu, Lixeira, IconesDesktop, TaxaTela, TelaScope, MenuClassico, DetalhesPastas, BarraLimpa.
 
 Espelho da pasta `OLGA_SOFTWARE\ALTERNADORES`. Instaladores (.exe) e dependencias grandes ficam nos Releases.
